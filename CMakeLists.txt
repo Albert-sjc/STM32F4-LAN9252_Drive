@@ -44,12 +44,35 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user sources here
+    # EtherCAT SSC sources. The duplicate SSC/Src/9252_HW.c is intentionally
+    # excluded; EtherCAT/9252_HW.c is the STM32 project copy used by this target.
+    SSC/Src/SSC-Device.c
+    SSC/Src/coeappl.c
+    SSC/Src/ecatappl.c
+    SSC/Src/ecatcoe.c
+    SSC/Src/ecateoe.c
+    SSC/Src/ecatfoe.c
+    SSC/Src/ecatslv.c
+    SSC/Src/emcy.c
+    SSC/Src/eoeappl.c
+    SSC/Src/foeappl.c
+    SSC/Src/mailbox.c
+    SSC/Src/objdef.c
+    SSC/Src/sdoserv.c
+
+    # LAN9252 hardware access and STM32F407 SPI platform layer.
+    EtherCAT/9252_HW.c
+    EtherCAT/SPIDriver/SPIDriver.c
+    EtherCAT/SPIDriver/STM32F407/STM32SPIDriver.c
+    EtherCAT/SPIDriver/STM32F407/STM32HW.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined include paths
+    SSC/Src
+    EtherCAT
+    EtherCAT/SPIDriver
+    EtherCAT/SPIDriver/STM32F407
 )
 
 # Add project symbols (macros)
