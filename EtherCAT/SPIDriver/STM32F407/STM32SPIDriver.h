@@ -91,6 +91,20 @@ extern "C" {
 
 	/* 向 LAN9252 发送一个字节。 */
 	void SPIWrite(UINT8 data);
+
+	void STM32_SPI_ClearError(void);
+	UINT8 STM32_SPI_HasError(void);
+
+	#define LAN9252_PLATFORM_OK                    0U
+	#define LAN9252_PLATFORM_SPI_ERROR             1U
+	#define LAN9252_PLATFORM_BYTE_TEST_TIMEOUT     2U
+	#define LAN9252_PLATFORM_READY_TIMEOUT         3U
+	#define LAN9252_PLATFORM_TIMER_ERROR           4U
+	#define LAN9252_PLATFORM_STACK_ERROR           5U
+
+	UINT8 LAN9252_PlatformInit(void);
+	UINT8 LAN9252_PlatformStart(void);
+	void LAN9252_PlatformStop(void);
       
 #ifdef	__cplusplus
 }

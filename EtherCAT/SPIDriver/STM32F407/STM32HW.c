@@ -39,6 +39,15 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 #include "tim.h"
 #include "9252_HW.h"
 #include "ecatappl.h"
+#include "STM32SPIDriver.h"
+
+#define LAN9252_BYTE_TEST_REG                 0x0064U
+#define LAN9252_HW_CFG_REG                    0x0074U
+#define LAN9252_BYTE_TEST_VALUE               0x87654321UL
+#define LAN9252_HW_CFG_READY_MASK             0x08000000UL
+#define LAN9252_RESET_ASSERT_DELAY_MS         1U
+#define LAN9252_RESET_RELEASE_DELAY_MS        25U
+#define LAN9252_REGISTER_READY_TIMEOUT_MS     500U
 
 /*
  * EtherCAT 软件定时计数器，单位为毫秒。
@@ -48,6 +57,125 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
  * 无符号整数规则自然回绕，SSC 通过计数差值判断超时，不要求计数器永久递增。
  */
 static volatile UINT16 ecatTimerMs;
+
+static UINT8 wait_for_lan9252_register(
+    UINT16 address,
+    UINT32 mask,
+    UINT32 expected_value,
+    UINT8 timeout_status)
+{
+    UINT32 tick_start = HAL_GetTick();
+
+    do
+    {
+        UINT32 register_value = PDIReadLAN9252DirectReg(address);
+
+        if (STM32_SPI_HasError() != 0U)
+        {
+            return LAN9252_PLATFORM_SPI_ERROR;
+        }
+
+        if ((register_value & mask) == expected_value)
+        {
+            return LAN9252_PLATFORM_OK;
+        }
+    } while ((UINT32)(HAL_GetTick() - tick_start) <
+             LAN9252_REGISTER_READY_TIMEOUT_MS);
+
+    return timeout_status;
+}
+
+UINT8 LAN9252_PlatformInit(void)
+{
+    UINT8 status;
+
+    HAL_NVIC_DisableIRQ(TIM7_IRQn);
+    HAL_NVIC_DisableIRQ(L9252_ISR_EXTI_IRQn);
+#if DC_SUPPORTED
+    HAL_NVIC_DisableIRQ(L9252_SYN0_EXTI_IRQn);
+    HAL_NVIC_DisableIRQ(L9252_SYN1_EXTI_IRQn);
+#endif
+
+    STM32_SPI_ClearError();
+    HAL_GPIO_WritePin(
+        L9252_RST_GPIO_Port,
+        L9252_RST_Pin,
+        GPIO_PIN_RESET);
+    HAL_Delay(LAN9252_RESET_ASSERT_DELAY_MS);
+    HAL_GPIO_WritePin(
+        L9252_RST_GPIO_Port,
+        L9252_RST_Pin,
+        GPIO_PIN_SET);
+    HAL_Delay(LAN9252_RESET_RELEASE_DELAY_MS);
+
+    status = wait_for_lan9252_register(
+        LAN9252_BYTE_TEST_REG,
+        0xFFFFFFFFUL,
+        LAN9252_BYTE_TEST_VALUE,
+        LAN9252_PLATFORM_BYTE_TEST_TIMEOUT);
+    if (status != LAN9252_PLATFORM_OK)
+    {
+        return status;
+    }
+
+    return wait_for_lan9252_register(
+        LAN9252_HW_CFG_REG,
+        LAN9252_HW_CFG_READY_MASK,
+        LAN9252_HW_CFG_READY_MASK,
+        LAN9252_PLATFORM_READY_TIMEOUT);
+}
+
+UINT8 LAN9252_PlatformStart(void)
+{
+    if (STM32_SPI_HasError() != 0U)
+    {
+        return LAN9252_PLATFORM_SPI_ERROR;
+    }
+
+    ecatTimerMs = 0U;
+    __HAL_TIM_SET_COUNTER(&htim7, 0U);
+    __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE);
+    if (HAL_TIM_Base_Start_IT(&htim7) != HAL_OK)
+    {
+        return LAN9252_PLATFORM_TIMER_ERROR;
+    }
+
+    __HAL_GPIO_EXTI_CLEAR_IT(L9252_ISR_Pin);
+    HAL_NVIC_ClearPendingIRQ(L9252_ISR_EXTI_IRQn);
+#if DC_SUPPORTED
+    __HAL_GPIO_EXTI_CLEAR_IT(L9252_SYN0_Pin);
+    __HAL_GPIO_EXTI_CLEAR_IT(L9252_SYN1_Pin);
+    HAL_NVIC_ClearPendingIRQ(L9252_SYN0_EXTI_IRQn);
+    HAL_NVIC_ClearPendingIRQ(L9252_SYN1_EXTI_IRQn);
+#endif
+    HAL_NVIC_ClearPendingIRQ(TIM7_IRQn);
+
+    HAL_NVIC_EnableIRQ(TIM7_IRQn);
+    HAL_NVIC_EnableIRQ(L9252_ISR_EXTI_IRQn);
+#if DC_SUPPORTED
+    HAL_NVIC_EnableIRQ(L9252_SYN0_EXTI_IRQn);
+    HAL_NVIC_EnableIRQ(L9252_SYN1_EXTI_IRQn);
+#endif
+
+    if (HAL_GPIO_ReadPin(L9252_ISR_GPIO_Port, L9252_ISR_Pin) ==
+        GPIO_PIN_RESET)
+    {
+        PDI_Isr();
+    }
+
+    return LAN9252_PLATFORM_OK;
+}
+
+void LAN9252_PlatformStop(void)
+{
+    HAL_NVIC_DisableIRQ(TIM7_IRQn);
+    HAL_NVIC_DisableIRQ(L9252_ISR_EXTI_IRQn);
+#if DC_SUPPORTED
+    HAL_NVIC_DisableIRQ(L9252_SYN0_EXTI_IRQn);
+    HAL_NVIC_DisableIRQ(L9252_SYN1_EXTI_IRQn);
+#endif
+    (void)HAL_TIM_Base_Stop_IT(&htim7);
+}
 
 /*******************************************************************************
  函数：
@@ -131,7 +259,7 @@ void PDI_Timer_Interrupt(void)
     ecatTimerMs = 0U;
     __HAL_TIM_SET_COUNTER(&htim7, 0U);
     __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE);
-    (void)HAL_TIM_Base_Start_IT(&htim7);
+    HAL_NVIC_DisableIRQ(TIM7_IRQn);
 }
 
 /*******************************************************************************
@@ -147,7 +275,7 @@ void PDI_IRQ_Interrupt(void)
 {
     __HAL_GPIO_EXTI_CLEAR_IT(L9252_ISR_Pin);
     HAL_NVIC_ClearPendingIRQ(L9252_ISR_EXTI_IRQn);
-    HAL_NVIC_EnableIRQ(L9252_ISR_EXTI_IRQn);
+    HAL_NVIC_DisableIRQ(L9252_ISR_EXTI_IRQn);
 }
 
 /*******************************************************************************
@@ -166,8 +294,8 @@ void PDI_Init_SYNC_Interrupts(void)
     __HAL_GPIO_EXTI_CLEAR_IT(L9252_SYN1_Pin);
     HAL_NVIC_ClearPendingIRQ(L9252_SYN0_EXTI_IRQn);
     HAL_NVIC_ClearPendingIRQ(L9252_SYN1_EXTI_IRQn);
-    HAL_NVIC_EnableIRQ(L9252_SYN0_EXTI_IRQn);
-    HAL_NVIC_EnableIRQ(L9252_SYN1_EXTI_IRQn);
+    HAL_NVIC_DisableIRQ(L9252_SYN0_EXTI_IRQn);
+    HAL_NVIC_DisableIRQ(L9252_SYN1_EXTI_IRQn);
 #endif
 }
 

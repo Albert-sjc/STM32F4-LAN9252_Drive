@@ -47,6 +47,44 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 #include "STM32SPIDriver.h"
 #include "9252_HW.h"
 
+#define LAN9252_SPI_TRANSFER_TIMEOUT_MS  2U
+
+static volatile UINT8 s_spi_error;
+
+static UINT8 spi_transfer_byte(UINT8 transmit_data)
+{
+    UINT8 received_data = 0U;
+
+    if (s_spi_error != 0U)
+    {
+        return 0U;
+    }
+
+    if (HAL_SPI_TransmitReceive(
+            &hspi3,
+            &transmit_data,
+            &received_data,
+            1U,
+            LAN9252_SPI_TRANSFER_TIMEOUT_MS) != HAL_OK)
+    {
+        s_spi_error = 1U;
+        CSHIGH();
+        return 0U;
+    }
+
+    return received_data;
+}
+
+void STM32_SPI_ClearError(void)
+{
+    s_spi_error = 0U;
+}
+
+UINT8 STM32_SPI_HasError(void)
+{
+    return s_spi_error;
+}
+
 /*******************************************************************************
  函数：
     void SPIWrite(UINT8 data)
@@ -61,14 +99,7 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 *******************************************************************************/
 void SPIWrite(UINT8 data)
 {
-    UINT8 receivedData = 0U;
-
-    (void)HAL_SPI_TransmitReceive(
-        &hspi3,
-        &data,
-        &receivedData,
-        1U,
-        HAL_MAX_DELAY);
+    (void)spi_transfer_byte(data);
 }
 
 /*******************************************************************************
@@ -84,17 +115,7 @@ void SPIWrite(UINT8 data)
 *******************************************************************************/
 UINT8 SPIRead(void)
 {
-    UINT8 transmitData = 0U;
-    UINT8 receivedData = 0U;
-
-    (void)HAL_SPI_TransmitReceive(
-        &hspi3,
-        &transmitData,
-        &receivedData,
-        1U,
-        HAL_MAX_DELAY);
-
-    return receivedData;
+    return spi_transfer_byte(0U);
 }
 
 /*******************************************************************************
@@ -116,6 +137,7 @@ void SPIOpen(void)
         MX_SPI3_Init();
     }
 
+    STM32_SPI_ClearError();
     CSHIGH();
 }
 

@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "9252_HW.h"
+#include "STM32SPIDriver.h"
 #include "applInterface.h"
 #include "ecatappl.h"
 /* USER CODE END Includes */
@@ -48,7 +49,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+static volatile UINT8 s_lan9252_platform_status = LAN9252_PLATFORM_OK;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -86,7 +87,8 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  /* Keep generated EtherCAT NVIC enables globally masked during startup. */
+  __disable_irq();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -96,15 +98,36 @@ int main(void)
   MX_TIM7_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  /* Mask EtherCAT sources before restoring SysTick and other interrupts. */
+  LAN9252_PlatformStop();
+  __enable_irq();
+
+  s_lan9252_platform_status = LAN9252_PlatformInit();
+  if (s_lan9252_platform_status != LAN9252_PLATFORM_OK)
+  {
+    Error_Handler();
+  }
+
   /* Initialize the LAN9252 ESC after SPI3 and the related GPIO are ready. */
   if (LAN9252_Init() != 0U)
   {
+    s_lan9252_platform_status = LAN9252_PLATFORM_STACK_ERROR;
     Error_Handler();
   }
 
   /* Initialize the EtherCAT slave stack before entering its cyclic loop. */
   if (MainInit() != 0U)
   {
+    s_lan9252_platform_status = LAN9252_PLATFORM_STACK_ERROR;
+    LAN9252_PlatformStop();
+    HW_Release();
+    Error_Handler();
+  }
+
+  s_lan9252_platform_status = LAN9252_PlatformStart();
+  if (s_lan9252_platform_status != LAN9252_PLATFORM_OK)
+  {
+    LAN9252_PlatformStop();
     HW_Release();
     Error_Handler();
   }
@@ -122,6 +145,7 @@ int main(void)
     MainLoop();
   }
 
+  LAN9252_PlatformStop();
   HW_Release();
   /* USER CODE END 3 */
 }

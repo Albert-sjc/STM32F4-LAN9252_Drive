@@ -57,7 +57,9 @@ try {
         'MainInit',
         'MainLoop',
         'bRunApplication',
-        'HW_Release'
+        'HW_Release',
+        'LAN9252_PlatformInit',
+        'LAN9252_PlatformStart'
     )
 
     foreach ($requiredSymbol in $requiredSymbols) {

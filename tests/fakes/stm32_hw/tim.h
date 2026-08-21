@@ -23,6 +23,7 @@ extern void *Test_TIM7_Instance;
 void Test_HAL_TIM_SetCounter(TIM_HandleTypeDef *timer, UINT32 value);
 void Test_HAL_TIM_ClearFlag(TIM_HandleTypeDef *timer, UINT32 flag);
 HAL_StatusTypeDef HAL_TIM_Base_Start_IT(TIM_HandleTypeDef *timer);
+HAL_StatusTypeDef HAL_TIM_Base_Stop_IT(TIM_HandleTypeDef *timer);
 
 #define __HAL_TIM_SET_COUNTER(timer, value) \
     Test_HAL_TIM_SetCounter((timer), (value))

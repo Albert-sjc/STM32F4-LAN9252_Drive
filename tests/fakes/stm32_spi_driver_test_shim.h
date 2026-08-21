@@ -14,7 +14,9 @@ typedef struct
 typedef enum
 {
     HAL_OK = 0,
-    HAL_ERROR = 1
+    HAL_ERROR = 1,
+    HAL_BUSY = 2,
+    HAL_TIMEOUT = 3
 } HAL_StatusTypeDef;
 
 typedef enum
@@ -35,10 +37,8 @@ HAL_StatusTypeDef Test_HAL_SPI_TransmitReceive(
     uint32_t timeout);
 
 #define HAL_SPI_TransmitReceive(hspi, transmitData, receiveData, size, timeout) \
-    ((void)sizeof(char[((size) == 1U) ? 1 : -1]),                        \
-     (void)sizeof(char[((timeout) == HAL_MAX_DELAY) ? 1 : -1]),          \
-     Test_HAL_SPI_TransmitReceive(                                       \
-         (hspi), (transmitData), (receiveData), (size), (timeout)))
+    Test_HAL_SPI_TransmitReceive(                                         \
+        (hspi), (transmitData), (receiveData), (size), (timeout))
 
 HAL_SPI_StateTypeDef Test_HAL_SPI_GetState(const SPI_HandleTypeDef *hspi);
 #define HAL_SPI_GetState(hspi) Test_HAL_SPI_GetState(hspi)
